@@ -1,0 +1,6 @@
+data/horse-racing-in-japan.csv filter=lfs diff=lfs merge=lfs -text
+data/jra-horse-racing-dataset/19860105-20210731_race_result.csv filter=lfs diff=lfs merge=lfs -text
+data/jra-horse-racing-dataset/.csv filter=lfs diff=lfs merge=lfs -text
+data/jra-horse-racing-dataset/19860105-20210731_laptime.csv filter=lfs diff=lfs merge=lfs -text
+data/jra-horse-racing-dataset/19860105-20210731_odds.csv filter=lfs diff=lfs merge=lfs -text
+data/jra-horse-racing-dataset/20020615-20210731_corner_passing_order.csv filter=lfs diff=lfs merge=lfs -text
