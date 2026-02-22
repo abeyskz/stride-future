@@ -103,7 +103,7 @@ def get_past_stats(horse_groups, horse_name, before_date, race_dist, race_venue,
 
     返却: 26次元のリスト
     """
-    zero = [0] * 26
+    zero = [0] * 25
 
     if horse_name not in horse_groups:
         return zero

@@ -2,3 +2,4 @@
 # data/*.zip
 data/processed/*.csv
 
+venv
