@@ -50,6 +50,7 @@ def load_and_prepare(csv_path: str):
         'レースID', 'レース日付', '競馬場名', '芝・ダート区分', '距離(m)',
         '着順', '馬名', 'タイム', '上り', '馬場状態1', '馬番', '人気',
         '性別', '馬齢', '斤量', '馬体重', '場体重増減', 'レース番号',
+        '4コーナー',
         'レース名'  # テスト用
     ]
     # レース名がない場合に備えてエラーハンドリング
@@ -70,6 +71,7 @@ def load_and_prepare(csv_path: str):
     df['馬体重数値'] = pd.to_numeric(df['馬体重'], errors='coerce')
     df['馬齢数値'] = pd.to_numeric(df['馬齢'], errors='coerce')
     df['体重増減'] = pd.to_numeric(df['場体重増減'], errors='coerce')
+    df['4角数値'] = pd.to_numeric(df['4コーナー'], errors='coerce')
 
     # エンコーディング
     sex_map = {'牡': 0, '牝': 1, 'セ': 2}
@@ -81,7 +83,7 @@ def load_and_prepare(csv_path: str):
     df['競馬場encode'] = df['競馬場名'].map(venue_map).fillna(-1).astype(np.int8)
 
     # 不要カラム削除
-    drop_cols = ['タイム', '距離(m)', '馬番', '斤量', '馬体重', '場体重増減', '性別', 'レース番号', '人気']
+    drop_cols = ['タイム', '距離(m)', '馬番', '斤量', '馬体重', '場体重増減', '性別', 'レース番号', '人気', '4コーナー']
     df.drop(columns=[c for c in drop_cols if c in df.columns], inplace=True)
     gc.collect()
 
@@ -102,9 +104,9 @@ def get_past_stats(horse_groups, horse_name, before_date, race_dist, race_venue,
     """
     馬の過去走統計を高速に計算（リスト返却版）
 
-    返却: 26次元のリスト
+    返却: 29次元のリスト (25 + 4コーナー4次元)
     """
-    zero = [0] * 25  # STAT_COLSと同じ25次元
+    zero = [0] * 29  # STAT_COLSと同じ29次元
 
     if horse_name not in horse_groups:
         return zero
@@ -138,6 +140,17 @@ def get_past_stats(horse_groups, horse_name, before_date, race_dist, race_venue,
     ag = past[past['上り数値'].notna()]['上り数値']
     td = sd[sd['タイム秒'].notna()]['タイム秒']
 
+    # 4コーナー通過順統計
+    corner4 = past[past['4角数値'].notna()]['4角数値']
+    avg_corner4 = corner4.mean() if len(corner4) > 0 else 0
+
+    # 直近3走の4コーナー通過順
+    r_corner = []
+    for _, r in recent.iloc[::-1].iterrows():
+        r_corner.append(r['4角数値'] if pd.notna(r.get('4角数値')) else 0)
+    while len(r_corner) < 3:
+        r_corner.append(0)
+
     return [
         n, wins / n, top2 / n, top3 / n, finish.mean(),
         len(sd), (sd['着順数値'] == 1).mean() if len(sd) > 0 else 0,
@@ -148,7 +161,9 @@ def get_past_stats(horse_groups, horse_name, before_date, race_dist, race_venue,
         *r_vals,
         ag.mean() if len(ag) > 0 else 0,
         ag.min() if len(ag) > 0 else 0,
-        td.mean() if len(td) > 0 else 0
+        td.mean() if len(td) > 0 else 0,
+        avg_corner4,
+        *r_corner
     ]
 
 
@@ -161,7 +176,8 @@ STAT_COLS = [
     '直近1走着順', '直近1走タイム', '直近1走上り',
     '直近2走着順', '直近2走タイム', '直近2走上り',
     '直近3走着順', '直近3走タイム', '直近3走上り',
-    '上り平均', '上り最速', 'タイム平均_同距離'
+    '上り平均', '上り最速', 'タイム平均_同距離',
+    '平均4角位置', '直近1走4角', '直近2走4角', '直近3走4角'
 ]
 
 META_COLS = [
@@ -171,7 +187,7 @@ META_COLS = [
     '馬場状態', '競馬場', '頭数'
 ]
 
-# 入力特徴量（モデルに入れる35次元）
+# 入力特徴量（モデルに入れる39次元）
 INPUT_FEATURES = [
     # 基本属性 (6次元)
     '性別', '馬齢', '斤量', '馬番', '馬体重', '体重増減',
@@ -179,8 +195,8 @@ INPUT_FEATURES = [
     '人気',
     # レース情報 (3次元)
     '馬場状態', '競馬場', '頭数',
-    # 過去走統計 (25次元)
-] + STAT_COLS  # = 35次元
+    # 過去走統計 (29次元)
+] + STAT_COLS  # = 39次元
 
 
 def generate_features(turf, horse_groups, distance=1200, year_from='2018-01-01',
