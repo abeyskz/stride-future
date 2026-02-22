@@ -64,6 +64,7 @@ def load_and_prepare(csv_path: str):
     df['着順数値'] = pd.to_numeric(df['着順'], errors='coerce')
     df['上り数値'] = pd.to_numeric(df['上り'], errors='coerce')
     df['距離'] = pd.to_numeric(df['距離(m)'], errors='coerce')
+    df['人気数値'] = pd.to_numeric(df['人気'], errors='coerce')
     df['馬番数値'] = pd.to_numeric(df['馬番'], errors='coerce')
     df['斤量数値'] = pd.to_numeric(df['斤量'], errors='coerce')
     df['馬体重数値'] = pd.to_numeric(df['馬体重'], errors='coerce')
@@ -80,7 +81,7 @@ def load_and_prepare(csv_path: str):
     df['競馬場encode'] = df['競馬場名'].map(venue_map).fillna(-1).astype(np.int8)
 
     # 不要カラム削除
-    drop_cols = ['タイム', '距離(m)', '馬番', '斤量', '馬体重', '場体重増減', '性別', 'レース番号']
+    drop_cols = ['タイム', '距離(m)', '馬番', '斤量', '馬体重', '場体重増減', '性別', 'レース番号', '人気']
     df.drop(columns=[c for c in drop_cols if c in df.columns], inplace=True)
     gc.collect()
 
@@ -103,7 +104,7 @@ def get_past_stats(horse_groups, horse_name, before_date, race_dist, race_venue,
 
     返却: 26次元のリスト
     """
-    zero = [0] * 25
+    zero = [0] * 25  # STAT_COLSと同じ25次元
 
     if horse_name not in horse_groups:
         return zero
@@ -166,17 +167,20 @@ STAT_COLS = [
 META_COLS = [
     'レースID', '馬名', 'is_winner', 'is_top3', 'actual_finish',
     '性別', '馬齢', '斤量', '馬番', '馬体重', '体重増減',
+    '人気',
     '馬場状態', '競馬場', '頭数'
 ]
 
-# 入力特徴量（モデルに入れる34次元）
+# 入力特徴量（モデルに入れる35次元）
 INPUT_FEATURES = [
     # 基本属性 (6次元)
     '性別', '馬齢', '斤量', '馬番', '馬体重', '体重増減',
+    # オッズ情報 (1次元)
+    '人気',
     # レース情報 (3次元)
     '馬場状態', '競馬場', '頭数',
-    # 過去走統計 (26次元)
-] + STAT_COLS  # = 35次元（うちレース情報3はレース全体で共通）
+    # 過去走統計 (25次元)
+] + STAT_COLS  # = 35次元
 
 
 def generate_features(turf, horse_groups, distance=1200, year_from='2018-01-01',
@@ -222,6 +226,7 @@ def generate_features(turf, horse_groups, distance=1200, year_from='2018-01-01',
                 row['馬番数値'] if pd.notna(row['馬番数値']) else 0,
                 row['馬体重数値'] if pd.notna(row['馬体重数値']) else 0,
                 row['体重増減'] if pd.notna(row.get('体重増減')) else 0,
+                row['人気数値'] if pd.notna(row.get('人気数値')) else 0,
                 row['馬場encode'],
                 row['競馬場encode'],
                 nrunners,
