@@ -1,5 +1,15 @@
-# data/*.csv
-# data/*.zip
+# 大きなデータファイル
+data/raw/*.csv
+data/raw/*.zip
+data/raw/__MACOSX/
 data/processed/*.csv
 
-venv
+# 一時ファイル
+*.pkl
+__pycache__/
+*.pyc
+venv/
+.env
+
+# OS
+.DS_Store
