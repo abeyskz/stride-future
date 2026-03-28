@@ -23,16 +23,21 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ==============================
-# 定数
+# 定数（あべちゃんの環境でチューニング可能）
 # ==============================
-POP_SIZE = 200       # 個体群サイズ
-N_GENERATIONS = 300  # 世代数
-MAX_DEPTH = 4        # 決定木の最大深さ
-TOURNAMENT_K = 5     # トーナメントサイズ
-CROSSOVER_RATE = 0.7
-MUTATION_RATE = 0.2
+POP_SIZE = 200       # 個体群サイズ（50〜500。大きいほど多様性が保たれるが遅くなる）
+N_GENERATIONS = 300  # 最大世代数（収束したら早期終了する）
+MAX_DEPTH = 4        # 決定木の最大深さ（3〜5。深すぎると過学習）
+TOURNAMENT_K = 5     # トーナメントサイズ（3〜7。大きいほど選択圧が強い）
+CROSSOVER_RATE = 0.7 # 交叉率
+MUTATION_RATE = 0.2  # 突然変異率
 ELITE_SIZE = 10      # エリート保存数
 RANDOM_SEED = 42
+DATA_RATIO = 1.0     # 使用するデータの割合（0.3=最新30%のみ, 1.0=全データ）
+
+# 収束判定パラメータ
+STAGNATION_LIMIT = 20   # best_everがN世代連続で更新されなければ収束と判断
+OVERFIT_THRESHOLD = 0.15 # train_w3とtest_w3の差がこれ以上開いたら過学習警告
 
 # 使用する特徴量
 FEATURE_COLS = [
@@ -219,8 +224,15 @@ def main():
     # 欠損値を0埋め
     df[FEATURE_COLS] = df[FEATURE_COLS].fillna(0)
 
-    # Train/Test分割（時系列でレースIDでソート）
+    # データ範囲の制限（DATA_RATIO < 1.0 の場合、最新N%のみ使用）
     race_ids = sorted(df['レースID'].unique())
+    if DATA_RATIO < 1.0:
+        start_idx = int(len(race_ids) * (1.0 - DATA_RATIO))
+        race_ids = race_ids[start_idx:]
+        df = df[df['レースID'].isin(race_ids)]
+        print(f"  データ範囲制限: 最新{DATA_RATIO*100:.0f}% → {len(race_ids)}レース")
+
+    # Train/Test分割（時系列でレースIDでソート）
     split_idx = int(len(race_ids) * 0.8)
     train_ids = set(race_ids[:split_idx])
     test_ids = set(race_ids[split_idx:])
@@ -248,9 +260,10 @@ def main():
     population = [random_tree(random.randint(2, MAX_DEPTH), feature_stats) for _ in range(POP_SIZE)]
 
     # 進化ループ
-    print(f"進化開始 ({N_GENERATIONS}世代)...\n")
+    print(f"進化開始 (最大{N_GENERATIONS}世代, 収束判定: {STAGNATION_LIMIT}世代停滞で終了)...\n")
     best_ever = None
     best_ever_fitness = 0
+    stagnation_count = 0
     history = []
 
     t_start = time.time()
@@ -267,11 +280,19 @@ def main():
         if gen_best_fitness > best_ever_fitness:
             best_ever = copy.deepcopy(population[gen_best_idx])
             best_ever_fitness = gen_best_fitness
+            stagnation_count = 0
+        else:
+            stagnation_count += 1
 
-        if gen % 50 == 0 or gen == N_GENERATIONS - 1:
+        if gen % 50 == 0 or gen == N_GENERATIONS - 1 or stagnation_count == STAGNATION_LIMIT:
             elapsed = time.time() - t_start
+            # 定期的にテスト評価して過学習チェック
+            test_fitness_check = evaluate(best_ever, test_groups)
+            overfit_gap = best_ever_fitness - test_fitness_check
+            overfit_warn = "⚠️ 過学習の兆候" if overfit_gap > OVERFIT_THRESHOLD else ""
             print(f"  世代 {gen:3d}: 最良={gen_best_fitness:.4f}  平均={avg_fitness:.4f}  "
-                  f"歴代最良={best_ever_fitness:.4f}  経過={elapsed:.1f}s")
+                  f"歴代最良={best_ever_fitness:.4f}  テスト={test_fitness_check:.4f}  "
+                  f"停滞={stagnation_count}/{STAGNATION_LIMIT}  経過={elapsed:.1f}s {overfit_warn}")
 
         history.append({
             'generation': gen,
@@ -279,6 +300,11 @@ def main():
             'avg': round(avg_fitness, 4),
             'best_ever': round(best_ever_fitness, 4),
         })
+
+        # 収束判定: best_everがN世代連続で更新されなければ終了
+        if stagnation_count >= STAGNATION_LIMIT:
+            print(f"\n  ✅ 収束判定: {STAGNATION_LIMIT}世代連続でbest_everが更新されず → 進化終了 (世代{gen})")
+            break
 
         # エリート保存
         elite_indices = np.argsort(fitnesses)[-ELITE_SIZE:]
